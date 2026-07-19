@@ -4,9 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon index.js",
-    "lint": "eslint .",
-    "test": "node --test"
+    "start": "NODE_ENV=production node index.js",
+    "dev": "NODE_ENV=development nodemon index.js",
+    "test": "NODE_ENV=test node --test",
+    "build:ui": "rm -rf dist && cd ~/Cursos/Helsinki_University/full-stack-open-submission/part4/bloglist_fronted && pnpm run build && cp -r dist ~/Cursos/Helsinki_University/full-stack-open-submission/part4/bloglist_backend",
+    "deploy:full": "pnpm run build:ui && cd ~/Cursos/Helsinki_University/full-stack-open-submission &&  git add . && git commit -m uibuild && git push",
+    "lint": "eslint ."
   },
   "keywords": [],
   "author": "",
@@ -30,6 +33,7 @@
     "@stylistic/eslint-plugin": "^5.10.0",
     "eslint": "^10.6.0",
     "globals": "^17.7.0",
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.14",
+    "supertest": "^7.2.2"
   }
 }
