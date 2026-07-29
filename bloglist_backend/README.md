@@ -211,3 +211,148 @@ Use async/await.
 The application mostly needs to update the number of likes for a blog post. You can implement this functionality the same way that we implemented updating notes in part 3.
 
 Implement tests for the functionality.
+
+## Exercises 4.15.-4.23.
+
+In the next exercises, the basics of user management will be implemented for the Bloglist application. The safest way is to follow the course material from part 4 chapter User administration to the chapter Token authentication. You can of course also use your creativity.
+
+One more warning: If you notice you are mixing async/await and then calls, it is 99% certain you are doing something wrong. Use either or, never both.
+
+### 4.15: Blog List Expansion, step 3
+
+Implement a way to create new users by doing an HTTP POST request to address api/users. Users have a username, password and name.
+
+Do not save passwords to the database as clear text, but use the bcrypt library like we did in part 4 chapter Creating users.
+
+NB Some Windows users have had problems with bcrypt. If you run into problems, remove the library with command
+
+npm uninstall bcrypt 
+
+and install bcryptjs instead.
+
+Implement a way to see the details of all users by doing a suitable HTTP request.
+
+The list of users can, for example, look as follows:
+browser api/users shows JSON data of two users
+
+### 4.16*: Blog List Expansion, step 4
+
+Add a feature which adds the following restrictions to creating new users: Both username and password must be given and both must be at least 3 characters long. The username must be unique.
+
+The operation must respond with a suitable status code and some kind of an error message if an invalid user is created.
+
+NB Do not test password restrictions with Mongoose validations. It is not a good idea because the password received by the backend and the password hash saved to the database are not the same thing. The password length should be validated in the controller as we did in part 3 before using Mongoose validation.
+
+Also, implement tests that ensure invalid users are not created and that an invalid add user operation returns a suitable status code and error message.
+
+NB if you decide to define tests on multiple files, you should note that by default each test file is executed in its own process (see Test execution model in the documentation). The consequence of this is that different test files are executed at the same time. Since the tests share the same database, simultaneous execution may cause problems, which can be avoided by executing the tests with the option --test-concurrency=1, i.e. defining them to be executed sequentially.
+
+### 4.17: Blog List Expansion, step 5
+
+Expand blogs so that each blog contains information on the creator of the blog.
+
+Modify adding new blogs so that when a new blog is created, any user from the database is designated as its creator (for example the one found first). Implement this according to part 4 chapter populate. Which user is designated as the creator does not matter just yet. The functionality is finished in exercise 4.19.
+
+Modify listing all blogs so that the creator's user information is displayed with the blog:
+api/blogs embeds creators user information in JSON data
+
+and listing all users also displays the blogs created by each user:
+api/users embeds blogs in JSON data
+
+### 4.18: Blog List Expansion, step 6
+
+Implement token-based authentication according to part 4 chapter Token authentication.
+
+### 4.19: Blog List Expansion, step 7
+
+Modify adding new blogs so that it is only possible if a valid token is sent with the HTTP POST request. The user identified by the token is designated as the creator of the blog.
+
+### 4.20*: Blog List Expansion, step 8
+
+This example from part 4 shows taking the token from the header with the getTokenFrom helper function in controllers/blogs.js.
+
+If you used the same solution, refactor taking the token to a middleware. The middleware should take the token from the Authorization header and assign it to the token field of the request object.
+
+In other words, if you register this middleware in the app.js file before all routes
+
+app.use(middleware.tokenExtractor)
+
+Routes can access the token with request.token:
+
+blogsRouter.post('/', async (request, response) => {
+  // ..
+  const decodedToken = jwt.verify(request.token, process.env.SECRET)
+  // ..
+})
+
+Remember that a normal middleware function is a function with three parameters, that at the end calls the last parameter next to move the control to the next middleware:
+
+const tokenExtractor = (request, response, next) => {
+  // code that extracts the token
+
+  next()
+}
+
+### 4.21*: Blog List Expansion, step 9
+
+Change the delete blog operation so that a blog can be deleted only by the user who added it. Therefore, deleting a blog is possible only if the token sent with the request is the same as that of the blog's creator.
+
+If deleting a blog is attempted without a token or by an invalid user, the operation should return a suitable status code.
+
+Note that if you fetch a blog from the database,
+
+const blog = await Blog.findById(...)
+
+the field blog.user does not contain a string, but an object. So if you want to compare the ID of the object fetched from the database and a string ID, a normal comparison operation does not work. The ID fetched from the database must be parsed into a string first.
+
+if ( blog.user.toString() === userid.toString() ) ...
+
+### 4.22*: Blog List Expansion, step 10
+
+Both the new blog creation and blog deletion need to find out the identity of the user who is doing the operation. The middleware tokenExtractor that we did in exercise 4.20 helps but still both the handlers of post and delete operations need to find out who the user holding a specific token is.
+
+Now create a new middleware called userExtractor that identifies the user related to the request and attaches it to the request object. After registering the middleware, the post and delete handlers should be able to access the user directly by referencing request.user:
+
+blogsRouter.post('/', userExtractor, async (request, response) => {
+  // get user from request object
+  const user = request.user
+  // ..
+})
+
+blogsRouter.delete('/:id', userExtractor, async (request, response) => {
+  // get user from request object
+  const user = request.user
+  // ..
+})
+
+Note that in this case, the userExtractor middleware has been registered with individual routes, so it is only executed in certain cases. So instead of using userExtractor with all the routes,
+
+// use the middleware in all routes
+app.use(middleware.userExtractor)
+app
+.use('/api/blogs', blogsRouter)  
+app.use('/api/users', usersRouter)
+app.use('/api/login', loginRouter)
+
+we could register it to be only executed with path /api/blogs routes:
+
+// use the middleware only in /api/blogs routes
+app.use('/api/blogs', middleware.userExtractor, blogsRouter)app
+.use('/api/users', usersRouter)
+app.use('/api/login', loginRouter)
+
+This is done by chaining multiple middleware functions as parameters to the use function. In the same way, middleware can also be registered only for individual routes:
+
+router.post('/', userExtractor, async (request, response) => {
+  // ...
+})
+
+Make sure that fetching all blogs with a GET request still works without a token.
+
+### 4.23*: Blog List Expansion, step 11
+
+After adding token-based authentication the tests for adding a new blog broke down. Fix them. Also, write a new test to ensure adding a blog fails with the proper status code 401 Unauthorized if a token is not provided.
+
+This is most likely useful when doing the fix.
+
+This is the last exercise for this part of the course and it's time to push your code to GitHub and mark all of your finished exercises to the exercise submission system.

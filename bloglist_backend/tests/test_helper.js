@@ -1,4 +1,5 @@
 import Blog from '../models/blog.js'
+import User from '../models/user.js'
 
 const initialBlogs = [
   {
@@ -15,6 +16,7 @@ const initialBlogs = [
   }
 ]
 
+// Helper to get an ID that does not exist in the database
 const nonExistingId = async () => {
   const blog = new Blog({
     title: 'willremovethissoon',
@@ -28,9 +30,16 @@ const nonExistingId = async () => {
   return blog._id.toString()
 }
 
+// Helper to fetch blogs and format them as plain JSON objects
 const blogsInDb = async () => {
   const blogs = await Blog.find({})
   return blogs.map(blog => blog.toJSON())
 }
 
-export default { initialBlogs, blogsInDb, nonExistingId }
+// Helper to fetch all users and format them as plain JSON objects
+const usersInDb = async () => {
+  const users = await User.find({})
+  return users.map(user => user.toJSON())
+}
+
+export default { initialBlogs, blogsInDb, nonExistingId, usersInDb }
