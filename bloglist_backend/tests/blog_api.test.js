@@ -2,16 +2,42 @@ import { test, after, beforeEach, describe } from 'node:test'
 import assert from 'node:assert'
 import mongoose from 'mongoose'
 import supertest from 'supertest'
+import jwt from 'jsonwebtoken'
+import bcrypt from 'bcrypt'
 import app from '../app.js'
 import Blog from '../models/blog.js'
+import User from '../models/user.js'
 import helper from './test_helper.js'
 
 const api = supertest(app)
 
+// Declere variable to hold the token and user ID for the tests
+let token
+
 // This runs before EVERY test, ensuring a clean database state
 beforeEach(async () => {
   await Blog.deleteMany({})
-  await Blog.insertMany(helper.initialBlogs)
+  await User.deleteMany({})
+
+  // 1. Create a test user
+  const passwordHash = await bcrypt.hash('sekret', 10)
+  const user = new User({ username: 'testuser', passwordHash })
+  const savedUser = await user.save()
+
+  // 2. Generate a valid token for this user
+  const userForToken = {
+    username: savedUser.username,
+    id: savedUser._id,
+  }
+  token = jwt.sign(userForToken, process.env.SECRET)
+
+  // 3. Link initial blogs to this user so populate and ownership checks work
+  const blogsWithUser = helper.initialBlogs.map(blog => ({
+    ...blog,
+    user: savedUser.id
+  }))
+
+  await Blog.insertMany(blogsWithUser)
 })
 
 describe('when there is initially some blogs saved', () => {
@@ -36,7 +62,7 @@ describe('when there is initially some blogs saved', () => {
 })
 
 describe('addition of a new blog', () => {
-  test('succeeds with valid data', async () => {
+  test('succeeds with valid data and token', async () => {
     const newBlog = {
       title: 'Clean Code',
       author: 'Robert C. Martin',
@@ -46,6 +72,7 @@ describe('addition of a new blog', () => {
 
     await api
       .post('/api/blogs')
+      .set('Authorization', `Bearer ${token}`) // Send the valid token
       .send(newBlog)
       .expect(201)
       .expect('Content-Type', /application\/json/)
@@ -60,6 +87,21 @@ describe('addition of a new blog', () => {
     assert(titles.includes('Clean Code'))
   })
 
+  test('fails with status code 401 if token is not provided', async () => {
+    const newBlog = {
+      title: 'Clean Code',
+      author: 'Robert C. Martin',
+      url: 'http://blog.cleancoder.com/',
+      likes: 10
+    }
+
+    // Intentionally omitting the .set('Authorization', ...) header
+    await api
+      .post('/api/blogs')
+      .send(newBlog)
+      .expect(401) // Now it should fail with 401, not 400
+  })
+
   test('likes default to 0 if not provided', async () => {
     const newBlog = {
       title: 'Test Blog',
@@ -69,6 +111,7 @@ describe('addition of a new blog', () => {
 
     await api
       .post('/api/blogs')
+      .set('Authorization', `Bearer ${token}`) // send token to pass auth, fail validation if needed
       .send(newBlog)
       .expect(201)
 
@@ -88,6 +131,7 @@ describe('addition of a new blog', () => {
 
     await api
       .post('/api/blogs')
+      .set('Authorization', `Bearer ${token}`) // Send token so it reaches validation logic
       .send(newBlog)
       .expect(400)
 
@@ -104,6 +148,7 @@ describe('addition of a new blog', () => {
 
     await api
       .post('/api/blogs')
+      .set('Authorization', `Bearer ${token}`) // Send token so it reaches va.idation logic
       .send(newBlog)
       .expect(400)
 
@@ -119,6 +164,7 @@ describe('deletion of a blog', () => {
 
     await api
       .delete(`/api/blogs/${blogToDelete.id}`)
+      .set('Authorization', `Bearer ${token}`)
       .expect(204)
 
     const blogsAtEnd = await helper.blogsInDb()

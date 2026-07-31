@@ -1,7 +1,8 @@
 import express from 'express'
-import jwt from 'jsonwebtoken'
 import Blog from '../models/blog.js'
-import User from '../models/user.js'
+import middleware from '../utils/middleware.js'
+
+const userExtractor = middleware.userExtractor
 
 const blogsRouter = express.Router()
 
@@ -16,7 +17,7 @@ blogsRouter.get('/', async (request, response) => {
 })
 
 // POST a new blog (Protected by token)
-blogsRouter.post('/', async (request, response) => {
+blogsRouter.post('/', userExtractor, async (request, response) => {
   const body = request.body
 
   // Validate that title and url are present
@@ -26,17 +27,10 @@ blogsRouter.post('/', async (request, response) => {
     })
   }
 
-  // 1. Verify the token that was extracted by the middleware
-  const decodedToken = jwt.verify(request.token, process.env.SECRET)
+  // 1. Access the user directly from request.user (populated by userExtractor)
+  const user = request.user
 
-  if (!decodedToken.id) {
-    return response.status(401).json({ error: 'token invalid' })
-  }
-
-  // 2. Find the user identified by the token
-  const user = await User.findById(decodedToken.id)
-
-  // 3. Create the blog and link it to the authenticated user
+  // 2. Create the blog and link it to the authenticated user
   const blog = new Blog({
     title: body.title,
     author: body.author,
@@ -47,7 +41,7 @@ blogsRouter.post('/', async (request, response) => {
 
   const savedBlog = await blog.save()
 
-  // 4. Update the user's blogs array with the new blog's ID
+  // 3. Update the user's blogs array with the new blog's ID
   user.blogs = user.blogs.concat(savedBlog._id)
   await user.save()
 
@@ -55,13 +49,9 @@ blogsRouter.post('/', async (request, response) => {
 })
 
 // DELETE a blog (Only the creator can delete)
-blogsRouter.delete('/:id', async (request, response) => {
-  // 1. Verify the token
-  const decodedToken = jwt.verify(request.token, process.env.SECRET)
-
-  if (!decodedToken.id) {
-    return response.status(401).json({ error: 'token invalid' })
-  }
+blogsRouter.delete('/:id', userExtractor, async (request, response) => {
+  // 1. Access the user directly from request.user (populated by userExtractor)
+  const user = request.user
 
   // 2. Find the blog
   const blog = await Blog.findById(request.params.id)
@@ -72,7 +62,7 @@ blogsRouter.delete('/:id', async (request, response) => {
 
   // 3. Check if the authenticated user is the creator
   // blog.user could be an ObjectId or a populate object, so we convert both to strings
-  if (blog.user.toString() !== decodedToken.id.toString()) {
+  if (blog.user.toString() !== user.id.toString()) {
     return response.status(401).json({
       error: 'only the creator can delete this blog'
     })
@@ -82,7 +72,6 @@ blogsRouter.delete('/:id', async (request, response) => {
   await Blog.findByIdAndDelete(request.params.id)
 
   // 5. Remove the blog ID from the user's blogs array
-  const user = await User.findById(decodedToken.id)
   user.blogs = user.blogs.filter(b => b.toString() !== blog.id.toString())
   await user.save()
 
